@@ -8,7 +8,6 @@ venv/
 *.pdf
 *.md
 !README.md
-!CLAUDE.md
 *_artifacts/
 _artifacts/
 result*/
