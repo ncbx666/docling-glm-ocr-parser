@@ -1,14 +1,21 @@
-# Hybrid PDF Parser: Docling + GLM-OCR
+# Гибридный PDF-парсер: Docling + GLM-OCR
 
-This project parses PDFs locally on Windows 11 with Docling as the main parser, then sends only complex visual targets to GLM-OCR:
+Локальный парсер PDF в Markdown. Основной парсер — Docling, а GLM-OCR
+получает только сложные визуальные фрагменты.
 
-- Docling handles normal text, page structure, reading order, tables, and images.
-- GLM-OCR is called for Docling-detected tables, pictures/figures, charts/diagrams, formulas, handwriting/form-like regions, and pages with very low extracted text.
-- Intermediate Docling exports, page images, region crops, table CSV/HTML files, target manifests, and GLM-OCR results are saved next to each output.
+- **Docling** обрабатывает обычный текст, структуру страниц, порядок чтения,
+  таблицы и изображения.
+- **GLM-OCR** (`zai-org/GLM-OCR`) вызывается для найденных Docling таблиц,
+  рисунков, графиков и схем, формул, рукописных и анкетных областей, а также
+  для страниц, где почти нет извлекаемого текста.
+- Промежуточные результаты (экспорт Docling, изображения страниц, вырезанные
+  области, таблицы в CSV/HTML, список целей и ответы GLM-OCR) сохраняются
+  рядом с результатом.
 
-## Setup in PowerShell
+Тот же подход, но с MinerU вместо GLM-OCR:
+[docling-miner-pdf-parser](https://github.com/ncbx666/docling-miner-pdf-parser).
 
-Create and activate a virtual environment:
+## Установка (Windows, PowerShell)
 
 ```powershell
 py -3.12 -m venv .venv
@@ -17,72 +24,91 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-The default backend uses the official GLM-OCR Transformers path with `zai-org/GLM-OCR` on CPU. The first run downloads model files from Hugging Face, so it can take a long time and needs enough disk/RAM. CPU inference is expected to be slow.
+По умолчанию GLM-OCR запускается через официальный путь Transformers на CPU.
+При первом запуске модель скачивается с Hugging Face: это долго, нужно
+достаточно места на диске и RAM. На CPU распознавание работает медленно.
 
-If PyTorch CPU wheels are not selected automatically on your machine, install PyTorch from the official CPU index first, then reinstall the requirements:
+Если pip не подобрал CPU-сборку PyTorch, поставьте её из официального индекса
+и переустановите зависимости:
 
 ```powershell
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
 ```
 
-## Run
+## Запуск
 
-Single PDF to a Markdown file:
+Один PDF в Markdown-файл:
 
 ```powershell
 python parse_pdf.py "C:\path\input.pdf" --output "C:\path\result.md"
 ```
 
-Single PDF to an output folder:
+Один PDF в папку:
 
 ```powershell
 python parse_pdf.py "C:\path\input.pdf" --output "C:\path\results"
 ```
 
-Folder of PDFs to a folder of Markdown files:
+Папка с PDF в папку с Markdown:
 
 ```powershell
 python parse_pdf.py "C:\path\input_folder" --output "C:\path\result_folder" --continue-on-error
 ```
 
-Useful debug options:
+### Бэкенд Ollama
 
-```powershell
-python parse_pdf.py "C:\path\input.pdf" --output "C:\path\result.md" --log-level DEBUG
-python parse_pdf.py "C:\path\input.pdf" --output "C:\path\result.md" --glm-backend none
-python parse_pdf.py "C:\path\input.pdf" --output "C:\path\result.md" --continue-on-glm-error
-```
-
-`--glm-backend none` is only for debugging Docling extraction and artifact generation. It does not satisfy the full hybrid OCR goal.
-
-## Optional Ollama backend
-
-If you have Ollama installed locally and have pulled the official `glm-ocr` model, you can use:
+Если локально установлен Ollama и скачана официальная модель `glm-ocr`:
 
 ```powershell
 python parse_pdf.py "C:\path\input.pdf" --output "C:\path\result.md" --glm-backend ollama
 ```
 
-## Outputs
+## Параметры
 
-For `result.md`, artifacts are saved in `result_artifacts`:
+| Флаг | По умолчанию | Что делает |
+|---|---|---|
+| `--output` | — | Markdown-файл для одного PDF или папка для результатов |
+| `--glm-backend` | `transformers` | `transformers`, `ollama` или `none` (только Docling, для отладки) |
+| `--glm-model` | `zai-org/GLM-OCR` | id модели на Hugging Face для бэкенда transformers |
+| `--glm-max-new-tokens` | `8192` | максимум токенов ответа GLM-OCR на одну область |
+| `--images-scale` | `2.0` | масштаб рендеринга страниц и областей: выше — точнее OCR, но больше памяти и времени |
+| `--low-text-threshold` | `80` | страница с меньшим числом букв и цифр целиком уходит в GLM-OCR |
+| `--continue-on-glm-error` | выкл. | при ошибке GLM-OCR оставить результат Docling и пометить область |
+| `--continue-on-error` | выкл. | для папки: не останавливаться на упавшем PDF, сводка ошибок в конце |
+| `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
-- `result_parse_pdf.log`: run log for the single-file command.
-- `docling.md`, `docling.txt`, `docling.json`: Docling-only exports.
-- `pages\`: rendered page images and per-page Docling text/Markdown.
-- `regions\`: Docling crops sent to GLM-OCR.
-- `tables\`: Docling table CSV/HTML exports where available.
-- `targets.json`: selected GLM-OCR targets and reasons.
-- `glm_ocr_results.json`: GLM-OCR output for each target.
-- `manifest.json`: settings, timings, target list, and output paths.
+`--glm-backend none` нужен только для отладки Docling: полноценного гибридного
+OCR в этом режиме нет.
 
-The generated Markdown includes total pipeline timing comments and page-ordered Docling Markdown. GLM-OCR sections are inserted after the corresponding page content in Docling reading-order target order.
+## Результаты
 
-For folder input, the run log is `result_folder\parse_pdf.log`, Markdown outputs mirror the input folder structure, and per-document artifacts are stored under `result_folder\_artifacts`.
+Для `result.md` артефакты сохраняются в `result_artifacts`:
 
-## Notes
+- `result_parse_pdf.log` — лог запуска;
+- `docling.md`, `docling.txt`, `docling.json` — экспорт только Docling;
+- `pages\` — изображения страниц и текст/Markdown Docling по страницам;
+- `regions\` — области, отправленные в GLM-OCR;
+- `tables\` — таблицы Docling в CSV/HTML;
+- `targets.json` — выбранные для GLM-OCR области и причины выбора;
+- `glm_ocr_results.json` — ответы GLM-OCR по каждой области;
+- `manifest.json` — настройки, тайминги, список целей и пути к файлам.
 
-- The code intentionally does not parse every page with GLM-OCR. Full-page GLM-OCR is used only when Docling extracts fewer than `--low-text-threshold` alphanumeric characters from a page.
-- Docling table/image/layout detection is always used first. GLM-OCR target crops are derived from Docling page and element images.
-- All paths are handled with Python `pathlib` and work with Windows paths.
+Итоговый Markdown содержит комментарии с общим временем работы и текст Docling
+по страницам. Результаты GLM-OCR вставляются после содержимого своей страницы
+в порядке чтения.
+
+Для папки лог пишется в `result_folder\parse_pdf.log`, Markdown повторяет
+структуру входной папки, а артефакты лежат в `result_folder\_artifacts`.
+
+## Особенности
+
+- GLM-OCR не прогоняет каждую страницу. Страница целиком уходит в GLM-OCR,
+  только если Docling извлёк меньше `--low-text-threshold` букв и цифр.
+- Сначала всегда работает разметка Docling, области для GLM-OCR вырезаются из
+  его изображений страниц и элементов.
+- Пути обрабатываются через `pathlib`, поэтому Windows-пути работают.
+
+## Лицензия
+
+[MIT](LICENSE)

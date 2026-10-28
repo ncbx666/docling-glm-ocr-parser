@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+
+# Parser inputs and outputs
+*.pdf
+*.md
+!README.md
+!CLAUDE.md
+*_artifacts/
+_artifacts/
+result*/
+*.log
